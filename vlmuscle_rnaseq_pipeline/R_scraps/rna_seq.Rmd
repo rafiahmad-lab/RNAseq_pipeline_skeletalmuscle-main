@@ -1,0 +1,394 @@
+---
+title: "RNA-seq prep"
+author: "Daniel Hammarström"
+date: "4 desember 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+source("./R/lib.R")
+```
+
+# Background and brief method
+Thirty-four participants completed a 12-wk training-intervention with each leg allocated to either low- or moderate-volume training (one or three sets of 6-12 repetition maximum). The study was primarily designed to assess the effect of training volume on muscular-hypertrophy and strength. Muscle biopsies were collected prior to and after the intervention as well as prior to and 60-min after the fifth training session. Total RNA was extracted by a standard Trizol protocol and concentrations were determined on a spectrophotometer. RNA-integrity numbers were determined using Bio-Rad Experion Total RNA kit.
+
+# Results
+
+## Training outcomes
+
+Training with multiple-sets per excercise was more efficient than single-set training (fig. 1).
+```{r training outcomes, include=TRUE, warning=FALSE, echo=FALSE, message=FALSE}
+### Fig 1 ----- Muscle CSA pre-post ###########
+
+source("./R/MR_extractRaw.R");source("./R/functions.R")
+include<-read.csv("./data/oneThreeSetLeg.csv", sep=";")
+
+include<-include%>%
+  gather(sets,leg, multiple:single)%>%
+  mutate(condition=leg)%>%
+  dplyr::select(subject, sex, include, condition, sets)
+
+
+mr<-mr.results%>%
+  mutate(condition=leg)%>%
+  inner_join(include)%>%
+  filter(include=="incl")%>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg)%>%
+  spread(timepoint, CSA.avg)%>%
+  mutate(csa.change=((post/pre)-1)*100)
+
+
+summary.mr<-mr%>%
+  group_by(sets)%>%
+  summarise(n=n(),
+            s=sd(csa.change),
+            error=qt(0.975, df=n-1)*s/sqrt(n),
+            csa.change=mean(csa.change))%>%
+  ungroup()%>%
+  mutate(sets=factor(sets, levels=c("single", "multiple"), labels=c("Single-set", "Multiple-sets")),
+         subject="group")
+
+### Statistics 
+
+# paired t-test percentage change in 
+
+temp<-mr.results%>%
+  mutate(condition=leg)%>%
+  inner_join(include)%>%
+  filter(include=="incl")%>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg)%>%
+  spread(timepoint, CSA.avg)%>%
+  mutate(csa.change=(post-pre))%>%
+  dplyr::select(subject, sex, sets, csa.change)%>%
+  spread(sets, csa.change)
+
+
+mr.ttest<-with(temp, t.test(multiple, single, paired=T))
+
+
+### plot
+fig1a<-mr%>%
+  mutate(sets=factor(sets, levels=c("single", "multiple"), labels=c("Single-set", "Multiple-sets")))%>%
+  ggplot(aes(sets, csa.change, group=subject))+geom_line()+
+  geom_errorbar(data=summary.mr[summary.mr$sets=="Single-set",], aes(ymin=csa.change-error, ymax=csa.change+error),
+                position = position_nudge(x=-0.1), width=0)+
+  geom_errorbar(data=summary.mr[summary.mr$sets=="Multiple-sets",], aes(ymin=csa.change-error, ymax=csa.change+error),
+                position = position_nudge(x=0.1), width=0)+
+
+  geom_point(data=summary.mr[summary.mr$sets=="Single-set",], aes(sets, csa.change), pch=21,fill="white",size=3,
+             position = position_nudge(x=-0.1))+
+ 
+  geom_point(data=summary.mr[summary.mr$sets=="Multiple-sets",], aes(sets, csa.change), pch=21,fill="black",size=3,
+             position = position_nudge(x=0.1))+
+  theme(legend.position=c(.2, .95),
+        axis.line.x = element_line(color="black", size = 0.5, lineend="square"),
+        axis.line.y = element_line(color="black", size = 0.5, lineend="square"),
+        axis.ticks.x=element_line(color="black", size = 0.5),
+        axis.ticks.y=element_line(color="black", size = 0.5),
+        axis.text=element_text(colour="black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        legend.background=element_blank(),
+        legend.key=element_blank(),
+        legend.title=element_blank(),
+        strip.background=element_blank())+
+ xlab("")+ylab("CSA relative change (%)")+
+  annotate("text", x=1.5, y=12, label=pval(mr.ttest$p.value), parse=FALSE)
+
+
+temp.stats<-mr.results%>%
+  mutate(condition=leg)%>%
+  inner_join(include)%>%
+  filter(include=="incl")%>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg)%>%
+  spread(timepoint, CSA.avg)%>%
+  mutate(csa.change=(post-pre))%>%
+  dplyr::select(subject, csa.change, sets)%>%
+  spread(sets, csa.change)
+
+r2<-round(cor.test(temp.stats$single, temp.stats$multiple)$estimate^2,3)
+p<-pval(cor.test(temp.stats$single, temp.stats$multiple)$p.value)
+  
+fig1b<-mr.results%>%
+  mutate(condition=leg)%>%
+  inner_join(include)%>%
+  filter(include=="incl")%>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg)%>%
+  spread(timepoint, CSA.avg)%>%
+  mutate(csa.change=(post-pre))%>%
+  dplyr::select(subject, sex, sets, csa.change)%>%
+  spread(sets, csa.change)%>%
+  mutate(sex=factor(sex, levels=c("female", "male"), labels=c("Female", "Male")))%>%
+  ggplot(aes(single, multiple, shape=sex, fill=sex))+
+  geom_point(size=3)+
+  geom_abline(intercept=0, slope=1)+
+  scale_x_continuous(limits=c(-1.2, 10))+scale_y_continuous(limits=c(-1.2, 10))+
+  theme(legend.position=c(.2, .95),
+        axis.line.x = element_line(color="black", size = 0.5, lineend="square"),
+        axis.line.y = element_line(color="black", size = 0.5, lineend="square"),
+        axis.ticks.x=element_line(color="black", size = 0.5),
+        axis.ticks.y=element_line(color="black", size = 0.5),
+        axis.text=element_text(colour="black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        legend.background=element_blank(),
+        legend.key=element_blank(),
+        legend.title=element_blank(),
+        strip.background=element_blank())+
+  scale_shape_manual(values=c(24,25))+
+  scale_fill_manual(values=c("white", "black"))+
+xlab(expression(paste("Single-set CSA absolute change (",cm^2,")")))  +
+       ylab(expression(paste("Multiple-sets CSA absolute change (",cm^2,")")))+
+  annotate("text", x=6, y=2.5, label=paste("R^2 == ", r2), parse=TRUE)+
+  annotate("text", x=6, y=1.8, label=p, parse=TRUE)
+
+
+g1 <- arrangeGrob(fig1a, top = textGrob("A", x = 0, hjust = -0.8, vjust=0.8, gp = gpar(fontface = "bold", fontsize = 16)))
+g2 <- arrangeGrob(fig1b, top = textGrob("B", x = 0, hjust = -0.8, vjust=0.8, gp = gpar(fontface = "bold", fontsize = 16)))
+
+grid.arrange(g1,g2, ncol=2, top="Figure 1. Training outcomes.")
+```
+
+## RNA integrity
+RNA integrity was compromised in some samples. RNA integrity vs. extraction parameters are shown in figure 2.
+
+```{r RNA integrity, include=TRUE, warning=FALSE, echo=FALSE, message=FALSE, fig.height=4, fig.width=6}
+
+rna_integrity <- read_excel("./data/RNAintegrity.xlsx", sheet = 2)
+
+temp <- data.frame(str_split_fixed(rna_integrity$`Sample Name`, " ", 3))
+
+temp$subject <- paste("FP", temp$X1, sep="")
+colnames(temp) <- c("subjnr", "leg", "timepoint", "subject")
+
+
+RNA_integrity <- cbind(temp[, c(2:4)], rna_integrity[,c(3, 4, 5, 6, 7)])
+
+colnames(RNA_integrity) <- c("leg", "timepoint", "subject","RNA_area",  "RNA_conc", "RNA_ratio", "RQI", "Classification")
+
+rna_subjinfo <- read_excel("./data/RNAintegrity.xlsx", sheet = 1)
+
+RNA<-RNA_integrity%>%
+  inner_join(rna_subjinfo[ , c(1,3,4,5,6,7,8, 9)])%>%
+  mutate(RQI = as.numeric(RQI))
+
+fig2<-RNA%>%
+  ggplot(aes(prot.mrna1, RQI, size=elution.volume*conc, fill=Classification))+geom_point(shape=21)+
+  scale_fill_manual(name="RQI classification", values=c("green", "red", "yellow"))+
+  scale_size(name="Total RNA\namount")+xlab("Tissue weight")
+
+
+fig2+ggtitle("Figure 2. RNA integrity and extraction parameters")
+```
+
+ 
+
+```{r RNA integrity and hypertrophy outcomes, include=TRUE, warning=FALSE, echo=FALSE, message=FALSE, fig.height=4, fig.width=6}
+
+rna_min<-RNA%>%
+  group_by(subject)%>%
+  summarise(RQI.low = min(RQI))
+
+
+subj.with.lowrqi<-rna_min%>%
+  filter(RQI.low < 7.4)%>%
+  nrow()
+
+
+fig3<-mr%>%
+  inner_join(rna_min)%>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>%
+  mutate(sets = factor(sets, levels = c("single", "multiple")))%>%
+  ggplot(aes(sets, csa.change, fill=RQI.class, group=subject, shape=sex))+geom_line()+geom_point(size=3)+
+  scale_fill_manual(name="RQI classification", values=c("green", "red"))+scale_shape_manual(values = c(21, 22))+
+  facet_grid(.~RQI.class)
+
+incl<-mr%>%
+  inner_join(rna_min)%>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>%
+  filter(RQI.low > 7)%>%
+  dplyr::select(subject, sex, sets, csa.change)%>%
+  spread(sets, csa.change)
+
+
+mr%>%
+  inner_join(rna_min)%>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>%
+  mutate(sets = factor(sets, levels = c("single", "multiple")))%>%
+  dplyr::select(subject, sex, sets, csa.change, RQI.class) %>%
+  spread(sets, csa.change) %>%
+  ggplot(aes(single, multiple, fill = RQI.class)) + geom_point(size = 2, shape = 21) + 
+  geom_abline(slope = 1, intercept = 0) + 
+  scale_fill_manual(values = c("green", "red"))
+  
+### Calculate the mean error at baseline as an estimate of measurement error
+error <- mr.results %>%
+  mutate(condition=leg) %>%
+  inner_join(read.csv("./data/oneThreeSetLeg.csv", sep=";") %>%
+               gather(sets,leg, multiple:single) %>%
+               mutate(condition = leg) %>%
+               dplyr::select(subject, sex, include, condition, sets)) %>%
+  filter(include=="incl") %>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg) %>%
+  filter(timepoint == "pre") %>%
+  group_by(subject) %>%
+  summarise(m = mean(CSA.avg), 
+            s = sd(CSA.avg)) %>%
+  ungroup() %>%
+  mutate(error = (s/m) * 100) %>%
+  summarise(error = mean(error)) 
+
+
+benefit <- mr.results %>%
+  mutate(condition=leg) %>%
+  inner_join(read.csv("./data/oneThreeSetLeg.csv", sep=";") %>%
+               gather(sets,leg, multiple:single) %>%
+               mutate(condition = leg) %>%
+               dplyr::select(subject, sex, include, condition, sets)) %>%
+  filter(include=="incl") %>%
+  dplyr::select(subject, timepoint, sex, sets, CSA.avg) %>%
+  spread(timepoint, CSA.avg) %>%
+  mutate(error = as.numeric(error), 
+         difference = post - pre) %>%
+  inner_join(read_excel("./data/bodycomp_DXA.xlsx") %>%
+               inner_join(read.csv("./data/oneThreeSetLeg.csv", sep=";")) %>%
+               filter(include =="incl") %>% 
+               group_by(subject) %>%
+               summarise(weight = mean(weight))) %>% 
+  group_by(subject) %>%
+  mutate(absolute.error = mean(pre) * (error/100)) %>%
+  ungroup() %>%
+  dplyr::select(subject, sex, sets, difference, absolute.error) %>%
+  spread(sets, difference) %>%
+  mutate(benefit = if_else(multiple - single > absolute.error, 1, 0)) %>%
+  dplyr::select(subject, sex, benefit) 
+
+
+
+
+group1 <- mr%>%
+  inner_join(rna_min) %>%
+  inner_join(benefit) %>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>% 
+  mutate(sets = factor(sets, levels = c("single", "multiple")))%>%
+  dplyr::select(subject, sex, sets,benefit, csa.change, RQI.class) %>%
+  spread(sets, csa.change) %>%
+  filter(RQI.class != "Red (Minimum RQI < 4)") %>%
+  ggplot(aes(single, multiple, fill = as.factor(benefit))) + geom_point(shape = 21, size = 2) +
+   geom_abline(intercept = 0, slope = 1, color = "gray60") + 
+  geom_abline(intercept = 2.4, slope = 1, color = "gray20")  +
+   scale_fill_manual(values = c("blue", "red"), name = "Benefit of\nmultiple-sets")
+  
+temp <- mr%>%
+  inner_join(rna_min) %>%
+  inner_join(benefit) %>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>% 
+  mutate(sets = factor(sets, levels = c("single", "multiple")))%>%
+  dplyr::select(subject, sex, sets,benefit, csa.change, RQI.class) %>%
+  spread(sets, csa.change) 
+
+
+
+  cluster <- kmeans(temp[,c(5,6)], 2)
+
+  temp$cluster <- cluster$cluster
+    
+group2 <- temp %>%
+      filter(RQI.class != "Red (Minimum RQI < 4)") %>%
+      ggplot(aes(single, multiple, fill = as.factor(cluster))) + 
+      geom_point(shape = 21, size = 2) +
+    scale_fill_manual(values = c("blue", "red"), name = "High- and low-\nrespondning cluster")
+    
+    
+
+total<-mr%>%
+  inner_join(rna_min)%>%
+  mutate(RQI.class = ifelse(RQI.low > 7, 
+                            yes="Green (Minimum RQI > 7)", 
+                            no = ifelse(RQI.low < 7 & RQI.low > 4, yes = "yellow", no = "Red (Minimum RQI < 4)")))%>%
+  dplyr::select(subject, sex, sets, csa.change)%>%
+  spread(sets, csa.change)
+
+incl.t <- t.test(incl$multiple, incl$single, paired=T)
+total.t <- t.test(total$multiple, total$single, paired=T)
+
+fig3+
+  ylab("% Change in CSA")+xlab("Number of sets per exercise")+
+  ggtitle("Figure 3. Responses to strength in relation to High- and low-integrity RNA")
+```
+
+`r subj.with.lowrqi` subjects had at least one sample with a RQI value lower than 7. These subjects do not seem to belong to either high or low responders or responders to single- or multiple-sets training (fig. 3). Excluding subjects with at least one low RQI did not change the conclusion of the study in regards of a more beneficial effect of multiple-sets vs. single-set training (mean difference between conditions `r round(incl.t$estimate, 2)` %-points 95% CI: `r round(incl.t$conf.int[1], 2)`-`r round(incl.t$conf.int[2], 2)` in dataset with lowest RQI > 7 and `r round(total.t$estimate, 2)` %-points 95% CI: `r round(total.t$conf.int[1], 2)`-`r round(total.t$conf.int[2], 2)` in the complete dataset.
+
+### Training response clusters
+
+Participants increasing more in response to multiple-sets compared to single-sets than the average baseline variation between legs were classified as as havining benefit of multiple-sets.
+
+```{r,include=TRUE, warning=FALSE, echo=FALSE, message=FALSE, fig.height=4, fig.width=6}
+group1 + ggtitle("Figure 4. Responders to multiple-sets") + xlab("Single-sets %-change")+
+  ylab("Multiple-sets %-change")
+```
+
+Another grouping was created based on k-means clusters using multiple- and single-sets responses.
+
+```{r,include=TRUE, warning=FALSE, echo=FALSE, message=FALSE, fig.height=4, fig.width=6}
+group2 + ggtitle("Figure 5. High- vs. Low responders") + xlab("Single-sets %-change")+
+  ylab("Multiple-sets %-change")
+```
+
+### RNA purity
+```{r RNA purity, include=TRUE, warning=FALSE, echo=FALSE, message=FALSE, cache=TRUE}
+
+source("./R/import_RNA_purity.R")
+
+### Exclude subjects with at least one RNA quality below 7
+rna.purity<-RNA%>%
+  group_by(subject, timepoint, leg, sample.id)%>%
+  summarise(RQI = mean(RQI))%>%
+  inner_join(rna_purity_data)%>%
+  inner_join(rna_min)%>%
+  filter(RQI.low > 7)%>%
+  dplyr::select(subject, timepoint, leg, sample.id, RQI, ratio.260.280, ratio.260.230)
+
+
+fig4a<-rna.purity%>%
+  ggplot(aes(RQI, ratio.260.280))+
+  geom_point(shape=21, fill="blue", alpha=5/10, size=2)+
+  ylab("Absorbance 260/280 ratio")
+fig4b<-rna.purity%>%
+  ggplot(aes(RQI, ratio.260.230))+
+  geom_point(shape=21, fill="red", alpha=5/10, size=2)+
+  ylab("Absorbance 260/230 ratio")
+
+library(cowplot)
+plot_grid(fig4a, fig4b,  labels=c("A", "B"))
+
+purity.summary<-rna.purity%>%
+  group_by()%>%
+  summarise(m230 = mean(ratio.260.230),
+            s230 = sd(ratio.260.230),
+            m280 = mean(ratio.260.280),
+            s280 = sd(ratio.260.280))
+
+
+
+```
+Average 260/280 absorbance ratio was `r round(purity.summary[1,3],2)` (SD: `r round(purity.summary[1,4],2)`) (fig 4A) and 260/230 ratio was `r round(purity.summary[1,1], 2)` (SD: `r round(purity.summary[1,2], 2)`) (fig 4B).
+
+
+

@@ -1,0 +1,15 @@
+﻿@article{RN765,
+   author = {Bamman, M. M. and Petrella, J. K. and Kim, J. S. and Mayhew, D. L. and Cross, J. M.},
+   title = {Cluster analysis tests the importance of myogenic gene expression during myofiber hypertrophy in humans},
+   journal = {J Appl Physiol (1985)},
+   volume = {102},
+   number = {6},
+   pages = {2232-9},
+   ISSN = {8750-7587 (Print)
+0161-7567 (Linking)},
+   DOI = {10.1152/japplphysiol.00024.2007},
+   url = {http://www.ncbi.nlm.nih.gov/pubmed/17395765},
+   year = {2007},
+   type = {Journal Article}
+}
+
